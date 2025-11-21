@@ -2,7 +2,8 @@ name: Docker Build and Push
 
 on:
   push:
-    branches: [ "master" ] # Або "master", залежно від вашої основної гілки
+    branches:
+       - "*"
     tags: [ 'v*.*.*' ]   # Запускати також при створенні тегів (наприклад, v1.0.0)
   pull_request:
     branches: [ "main" ]
@@ -39,6 +40,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch       # создает тег = имя ветки
+            type=ref,event=tag          # создает тег = git-тег (например v1.0.0)
+            type=sha,format=long        # дополнительный тег :sha
 
       # 4. Збірка та пуш образу
       - name: Build and push Docker image
