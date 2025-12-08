@@ -22,6 +22,7 @@ class Config:
             # Функція для отримання значення з змінної оточення або конфігураційного файлу
 
         def get_config_value(section, option, default=None, required=False):
+            # Формування імʼя змінної оточення, за формулою СЕКЦІЯ ВЕЛИКИМИ ЛІТЕРАМИ_ОПЦІЯ ВЕЛИКИМИ ЛІТЕРАМИ
             env_var = f"{section.upper()}_{option.upper()}"
             if use_env_config:
                 # Якщо використовуємо змінні оточення, зчитуємо значення тільки з них
@@ -79,8 +80,3 @@ def configure_logging(config_instance):
             level=log_level,
             handlers=[logging.StreamHandler()]  # Вывод в stdout
         )
-
-
-# REDIS_HOST = '192.168.99.121'
-# REDIS_PORT = 6379
-# REDIS_DB = 0
