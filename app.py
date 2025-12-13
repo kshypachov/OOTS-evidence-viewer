@@ -53,22 +53,22 @@ def conn_to_redis(redis_url):
 def get_data_from_redis(message_uuid, redis_client):
     """Get data from Redis by message_uuid"""
     if redis_client is None:
-        print("Redis client is not connected. Aborting.")
+        logger.error("Redis client is not connected. Aborting.")
         return None
 
     redis_key = f"oots:message:response:evidence:{message_uuid}"
 
-    print(f"Get data from Redis by id: {redis_key}")
+    logger.info(f"Get data from Redis by id: {redis_key}")
 
     try:
         # Get dara from Redis
         data = redis_client.get(redis_key)
 
         if data is None:
-            print(f"Key {redis_key} is not found in Redis")
+            logger.warning(f"Key {redis_key} is not found in Redis")
             return None
 
-        print(f"Data got from Redis: {data[:100] if len(data) > 100 else data}...")
+        logger.debug(f"Data got from Redis: {data[:100] if len(data) > 100 else data}...")
 
         # Parse JSON data if it's JSON'
         try:
@@ -79,10 +79,10 @@ def get_data_from_redis(message_uuid, redis_client):
             return data
 
     except redis.RedisError as e:
-        print(f"Redis error while getting data: {e}")
+        logger.exception(f"Redis error while getting data: {e}")
         return None
     except Exception as e:
-        print(f"Unexpected Redis erro: {e}")
+        logger.exception(f"Unexpected Redis erro: {e}")
         return None
 
 
@@ -106,35 +106,39 @@ def evidense_previewer(message_uuid):
 
     # show error if returnurl is not provided
     if not returnurl:
+        logger.error("returnurl parameter is not provided in URL")
         return render_template("error.html",
                                error_message="Відсутній обовʼязковий параметр 'returnurl'",
                                error_details="URL повинен містити параметр returnurl. Приклад: /?returnurl=https://example.com"), 400
     # show error if message_uuid is not provided
     if not message_uuid:
+        logger.error("message_uuid is not provided in URL")
         return render_template("error.html",
                                error_message="Відсутній обовʼязковий параметр 'message_uuid'",
                                error_details="URL повинен містити параметр message_uuid. Приклад: /3245234089573246345"), 400
 
-    print(message_uuid)
-    print(returnurl)
+    logger.info(f"Message uuid: {message_uuid}")
+    logger.debug(f"Return URL: {returnurl}")
 
     redis_conn = conn_to_redis(conf.redis_url)
     data = get_data_from_redis(message_uuid, redis_conn)
     redis_conn.close()
 
     if data is None:
+        logger.error(f"Data not found in Redis by id: {message_uuid}")
         return render_template("error.html",
                                error_message="Data not found",
                                error_details=f"Data not found in Redis by id: {message_uuid}"), 404
 
 
     if (data["preview"] != True):
+        logger.error(f"Data is not previewable in Redis by id: {message_uuid}")
         return render_template("error.html",
                                error_message="Data is not previewable",
                                error_details=f"Data is not previewable in Redis by id: {message_uuid}"), 400
 
 
-    print(data)
+    logger.debug(f"Data for preview: {data}")
     # List for XMLs
     xml_list = []
 
