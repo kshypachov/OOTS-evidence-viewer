@@ -7,7 +7,8 @@ import json
 import settings
 import logging
 import sys
-
+from utils import conn_to_redis, get_data_from_redis, parse_xml_to_dict
+import base64
 
 # Зчитування параметрів додатку з конфігураційного файлу
 conf = settings.Config('config.ini')
@@ -35,68 +36,6 @@ def fromstring_filter(xml_string):
     except ET.ParseError as e:
         logger.error(f"XML parsing error: {e}")
         return None
-
-def conn_to_redis(redis_url):
-    try:
-        logger.info(f"Connecting to Redis at {redis_url}")
-        redis_client = redis.Redis.from_url(redis_url)
-
-        # check connection
-        redis_client.ping()
-
-        return redis_client
-    except redis.ConnectionError as e:
-        logger.critical(f"Error connecting to Redis: {e}")
-        redis_client = None
-        return redis_client
-
-def get_data_from_redis(message_uuid, redis_client):
-    """Get data from Redis by message_uuid"""
-    if redis_client is None:
-        print("Redis client is not connected. Aborting.")
-        return None
-
-    redis_key = f"oots:message:response:evidence:{message_uuid}"
-
-    print(f"Get data from Redis by id: {redis_key}")
-
-    try:
-        # Get dara from Redis
-        data = redis_client.get(redis_key)
-
-        if data is None:
-            print(f"Key {redis_key} is not found in Redis")
-            return None
-
-        print(f"Data got from Redis: {data[:100] if len(data) > 100 else data}...")
-
-        # Parse JSON data if it's JSON'
-        try:
-            json_data = json.loads(data)
-            return json_data
-        except json.JSONDecodeError:
-            # if not JSON, return as is
-            return data
-
-    except redis.RedisError as e:
-        print(f"Redis error while getting data: {e}")
-        return None
-    except Exception as e:
-        print(f"Unexpected Redis erro: {e}")
-        return None
-
-
-def parse_xml_to_dict(element):
-    """Преобразует XML-элемент в словарь."""
-    node = {}
-    if element.text and element.text.strip():
-        node["__text"] = element.text.strip()
-    for child in element:
-        if child.tag not in node:
-            node[child.tag] = []
-        node[child.tag].append(parse_xml_to_dict(child))
-    return node
-
 
 @app.route('/<message_uuid>')
 def evidense_previewer(message_uuid):
@@ -134,7 +73,28 @@ def evidense_previewer(message_uuid):
                                error_details=f"Data is not previewable in Redis by id: {message_uuid}"), 400
 
 
-    print(data)
+    # log content type of incoming message
+    logger.debug(data["content_type"])
+
+    try:
+        if (data["content_type"] == "application/pdf"):
+            # list for evidence PDFs
+            pdf_list = []
+            for evidence in data["evidences"]:
+                pdf_list.append({
+                    "title": evidence["cid"],
+                    "pdf_preview": base64.b64decode( evidence["content"], validate=True)
+                })
+
+            return render_template("pdf.html", pdf_list=pdf_list, message_uuid=message_uuid, returnurl=returnurl)
+
+    except Exception as e:
+        logger.error(f"Error while decoding evidence{e}")
+
+        return render_template("error.html",
+                               error_message="Error while decoding evidence",
+                               error_details=f"Error while decoding evidence"), 400
+
     # List for XMLs
     xml_list = []
 
@@ -143,8 +103,6 @@ def evidense_previewer(message_uuid):
             "title": evidence["cid"],
             "xml": evidence["content"]
         })
-
-    print(xml_list)
 
     return render_template("index.html", xml_list=xml_list, message_uuid=message_uuid, returnurl=returnurl)
 

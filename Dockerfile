@@ -45,8 +45,8 @@ RUN python3 -m pip install --no-cache-dir -r requirements.txt
 # Switch to the non-privileged user to run the application.
 USER appuser
 # Expose the port that the application listens on.
-EXPOSE 5000
+EXPOSE 8000
 ARG FLASK_APP=app.py
 
 # Run the application.
-CMD gunicorn --bind 0.0.0.0:5000 app:app
+CMD gunicorn --bind 0.0.0.0:8000 app:app
