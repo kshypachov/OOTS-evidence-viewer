@@ -5,5 +5,4 @@ port=6379
 db=0
 
 [logging]
-filename=test.log
-level=INFO
+level=DEBUG

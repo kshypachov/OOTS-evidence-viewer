@@ -317,3 +317,4 @@ fabric.properties
 .pytest_cach/
 __pycache__/
 *.pyc
+config.ini

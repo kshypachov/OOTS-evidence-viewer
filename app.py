@@ -1,4 +1,6 @@
 # from idlelib import query
+from logging import Logger
+
 from flask import Flask, request, render_template, jsonify
 #from flask_bootstrap5 import Bootstrap
 import xml.etree.ElementTree as ET
@@ -9,6 +11,7 @@ import logging
 import sys
 from utils import conn_to_redis, get_data_from_redis, parse_xml_to_dict
 import base64
+
 
 # Зчитування параметрів додатку з конфігураційного файлу
 conf = settings.Config('config.ini')
@@ -22,6 +25,7 @@ except Exception as e:
     # Якщо виникає помилка при налаштуванні логування, додаток припиняє роботу
     print(f"Помилка налаштування логування: {e}")
     print(f"Програму зупинено!")
+    exit(-1)
 
 logger.debug("Початок ініціалізації додатку")
 
@@ -60,6 +64,10 @@ def evidense_previewer(message_uuid):
     redis_conn = conn_to_redis(conf.redis_url)
     data = get_data_from_redis(message_uuid, redis_conn)
     redis_conn.close()
+    # json_raw = testdata.evidence
+    # print(json_raw)
+    # data = json.loads(json_raw)
+
 
     if data is None:
         return render_template("error.html",
@@ -67,26 +75,62 @@ def evidense_previewer(message_uuid):
                                error_details=f"Data not found in Redis by id: {message_uuid}"), 404
 
 
-    if (data["preview"] != True):
+    if (data["preview"] == True):
         return render_template("error.html",
                                error_message="Data is not previewable",
                                error_details=f"Data is not previewable in Redis by id: {message_uuid}"), 400
 
 
     # log content type of incoming message
-    logger.debug(data["content_type"])
+    logger.debug(f"DATA: {data}")
+    logger.debug(f"Evidences: {data["evidences"]}")
+    logger.debug(f"Evidences: { data["evidences"][0] }")
+    logger.debug(f"Evidences: {data["evidences"][0]["content_type"]}")
+
+    first_evidence_content_type = data["evidences"][0]["content_type"]
+
 
     try:
-        if (data["content_type"] == "application/pdf"):
+        if (first_evidence_content_type == "application/pdf"):
+            logger.debug("Evidences type PDF")
             # list for evidence PDFs
             pdf_list = []
+            logger.debug(f"Start formating list of PDF evidences")
             for evidence in data["evidences"]:
+                logger.debug(f"Iterated evidence {evidence}")
                 pdf_list.append({
                     "title": evidence["cid"],
-                    "pdf_preview": base64.b64decode( evidence["content"], validate=True)
+                    "pdf_preview": evidence["content"]
                 })
 
-            return render_template("pdf.html", pdf_list=pdf_list, message_uuid=message_uuid, returnurl=returnurl)
+            logger.debug(f"End formating list of PDF evidences")
+            logger.debug(f"List of PDF evidences: {pdf_list}")
+            logger.debug(f"Message UUID: {message_uuid}")
+            logger.debug(f"Return URL: {returnurl}")
+
+            return render_template("pdf.html", returnurl=returnurl, message_uuid=message_uuid, pdf_list=pdf_list)
+
+        elif (first_evidence_content_type == "application/xml"):
+            logger.debug("Evidence type XML")
+
+            logger.debug(f"Data for preview: {data}")
+            # List for XMLs
+            xml_list = []
+
+            for evidence in data["evidences"]:
+                xml_list.append({
+                    "title": evidence["cid"],
+                    "xml": evidence["content"]
+                })
+
+            logger.debug(f"Start formating list of XML evidences")
+            logger.debug(f"XML evidences: {xml_list}")
+            return render_template("index.html", xml_list=xml_list, message_uuid=message_uuid, returnurl=returnurl)
+
+        else :
+            return render_template("error.html",
+                               error_message="Unsupported content type",
+                               error_details=f"Unsupported content type: {first_evidence_content_type}"), 400
 
     except Exception as e:
         logger.error(f"Error while decoding evidence{e}")
@@ -109,25 +153,21 @@ def evidense_previewer(message_uuid):
 
 @app.route('/submit', methods=['POST'])
 def submit_approvals():
-    """Обрабатывает отправку состояний чекбоксов"""
+    """Обробляємо отримані статуси чекбоксів"""
     data = request.get_json()
-    print(data)
+    logger.info("Отримано відповідь з апрувами.")
+    logger.debug(data)
     approvals = data.get('approvals', {})
 
-    print("Получены состояния апрувов:")
-    for doc_id, is_approved in approvals.items():
-        print(f"  Документ {doc_id}: {'Затверджено' if is_approved else 'Не затверджено'}")
-
-    # Здесь можно добавить логику сохранения в базу данных или файл
+    logger.debug("Підключення до Redis для оновлення стану апрувів.")
     redis_conn = conn_to_redis(conf.redis_url)
     if redis_conn is None:
+        logger.error("Зʼєднання з Redis провалено")
         return jsonify({"status": "error", "message": "Redis connection failed"}), 500
     json_data = get_data_from_redis(data["message_uuid"], redis_conn)
 
-
-    print("Получены состояния апрувов:")
     for doc_id, is_approved in approvals.items():
-
+        logger.debug(f"Документ {doc_id}: {'Затверджено' if is_approved else 'Не затверджено'}")
         for evidence in json_data["evidences"]:
             if doc_id == evidence["cid"]:
                 evidence["permit"] = is_approved
@@ -146,4 +186,4 @@ def submit_approvals():
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(port=8000, host="0.0.0.0", debug=True)

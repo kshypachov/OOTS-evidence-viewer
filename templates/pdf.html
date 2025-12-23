@@ -18,17 +18,17 @@
     <div class="pdf-block">
       <h5 class="mb-3">{{ pdf.title }}</h5>
 
-      <iframe class="pdf-frame"
-              src="{{ url_for('evidence_pdf', message_uuid=message_uuid, cid=pdf.title) }}">
-      </iframe>
+        <iframe class="pdf-frame"
+                src="data:application/pdf;base64,{{ pdf.pdf_preview }}">
+        </iframe>
 
-      <div class="mt-2">
-        <a class="btn btn-outline-primary"
-           href="{{ url_for('evidence_pdf', message_uuid=message_uuid, cid=pdf.title) }}"
-           target="_blank" rel="noopener">
-          Open in new tab
-        </a>
-      </div>
+<!--        <div class="mt-2">-->
+<!--          <a class="btn btn-outline-primary"-->
+<!--             href="data:application/pdf;base64,{{ pdf.pdf_preview }}"-->
+<!--             target="_blank" rel="noopener">-->
+<!--            Open in new tab-->
+<!--          </a>-->
+<!--        </div>-->
 
       <div class="approval-checkbox mt-3">
         <div class="form-check">

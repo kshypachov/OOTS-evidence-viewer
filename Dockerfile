@@ -49,4 +49,4 @@ EXPOSE 8000
 ARG FLASK_APP=app.py
 
 # Run the application.
-CMD gunicorn --bind 0.0.0.0:8000 app:app
+CMD gunicorn app:app --bind ${HOST:-0.0.0.0}:${PORT:-8000} --workers ${WORKERS:-1} --log-level ${LOG_LEVEL:-info}
