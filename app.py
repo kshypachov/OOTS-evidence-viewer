@@ -75,7 +75,7 @@ def evidense_previewer(message_uuid):
                                error_details=f"Data not found in Redis by id: {message_uuid}"), 404
 
 
-    if (data["preview"] == True):
+    if (data["preview"] != True):
         return render_template("error.html",
                                error_message="Data is not previewable",
                                error_details=f"Data is not previewable in Redis by id: {message_uuid}"), 400
