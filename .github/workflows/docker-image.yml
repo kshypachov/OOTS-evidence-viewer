@@ -17,4 +17,4 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag flaskevidenceviewer:$(date +%s)
+      run: docker build . --file Dockerfile --tag oots-evidence-viewer:$(date +%s)
