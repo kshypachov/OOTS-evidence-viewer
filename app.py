@@ -1,4 +1,6 @@
 # from idlelib import query
+from logging import Logger
+
 from flask import Flask, request, render_template, jsonify
 #from flask_bootstrap5 import Bootstrap
 import xml.etree.ElementTree as ET
@@ -7,6 +9,8 @@ import json
 import settings
 import logging
 import sys
+from utils import conn_to_redis, get_data_from_redis, parse_xml_to_dict
+import base64
 
 
 # Зчитування параметрів додатку з конфігураційного файлу
@@ -21,6 +25,7 @@ except Exception as e:
     # Якщо виникає помилка при налаштуванні логування, додаток припиняє роботу
     print(f"Помилка налаштування логування: {e}")
     print(f"Програму зупинено!")
+    exit(-1)
 
 logger.debug("Початок ініціалізації додатку")
 
@@ -36,68 +41,6 @@ def fromstring_filter(xml_string):
         logger.error(f"XML parsing error: {e}")
         return None
 
-def conn_to_redis(redis_url):
-    try:
-        logger.info(f"Connecting to Redis at {redis_url}")
-        redis_client = redis.Redis.from_url(redis_url)
-
-        # check connection
-        redis_client.ping()
-
-        return redis_client
-    except redis.ConnectionError as e:
-        logger.critical(f"Error connecting to Redis: {e}")
-        redis_client = None
-        return redis_client
-
-def get_data_from_redis(message_uuid, redis_client):
-    """Get data from Redis by message_uuid"""
-    if redis_client is None:
-        logger.error("Redis client is not connected. Aborting.")
-        return None
-
-    redis_key = f"oots:message:response:evidence:{message_uuid}"
-
-    logger.info(f"Get data from Redis by id: {redis_key}")
-
-    try:
-        # Get dara from Redis
-        data = redis_client.get(redis_key)
-
-        if data is None:
-            logger.warning(f"Key {redis_key} is not found in Redis")
-            return None
-
-        logger.debug(f"Data got from Redis: {data[:100] if len(data) > 100 else data}...")
-
-        # Parse JSON data if it's JSON'
-        try:
-            json_data = json.loads(data)
-            return json_data
-        except json.JSONDecodeError:
-            # if not JSON, return as is
-            return data
-
-    except redis.RedisError as e:
-        logger.exception(f"Redis error while getting data: {e}")
-        return None
-    except Exception as e:
-        logger.exception(f"Unexpected Redis erro: {e}")
-        return None
-
-
-def parse_xml_to_dict(element):
-    """Преобразует XML-элемент в словарь."""
-    node = {}
-    if element.text and element.text.strip():
-        node["__text"] = element.text.strip()
-    for child in element:
-        if child.tag not in node:
-            node[child.tag] = []
-        node[child.tag].append(parse_xml_to_dict(child))
-    return node
-
-
 @app.route('/<message_uuid>')
 def evidense_previewer(message_uuid):
 
@@ -106,39 +49,96 @@ def evidense_previewer(message_uuid):
 
     # show error if returnurl is not provided
     if not returnurl:
-        logger.error("returnurl parameter is not provided in URL")
         return render_template("error.html",
                                error_message="Відсутній обовʼязковий параметр 'returnurl'",
                                error_details="URL повинен містити параметр returnurl. Приклад: /?returnurl=https://example.com"), 400
     # show error if message_uuid is not provided
     if not message_uuid:
-        logger.error("message_uuid is not provided in URL")
         return render_template("error.html",
                                error_message="Відсутній обовʼязковий параметр 'message_uuid'",
                                error_details="URL повинен містити параметр message_uuid. Приклад: /3245234089573246345"), 400
 
-    logger.info(f"Message uuid: {message_uuid}")
-    logger.debug(f"Return URL: {returnurl}")
+    print(message_uuid)
+    print(returnurl)
 
     redis_conn = conn_to_redis(conf.redis_url)
     data = get_data_from_redis(message_uuid, redis_conn)
     redis_conn.close()
+    # json_raw = testdata.evidence
+    # print(json_raw)
+    # data = json.loads(json_raw)
+
 
     if data is None:
-        logger.error(f"Data not found in Redis by id: {message_uuid}")
         return render_template("error.html",
                                error_message="Data not found",
                                error_details=f"Data not found in Redis by id: {message_uuid}"), 404
 
 
     if (data["preview"] != True):
-        logger.error(f"Data is not previewable in Redis by id: {message_uuid}")
         return render_template("error.html",
                                error_message="Data is not previewable",
                                error_details=f"Data is not previewable in Redis by id: {message_uuid}"), 400
 
 
-    logger.debug(f"Data for preview: {data}")
+    # log content type of incoming message
+    logger.debug(f"DATA: {data}")
+    logger.debug(f"Evidences: {data["evidences"]}")
+    logger.debug(f"Evidences: { data["evidences"][0] }")
+    logger.debug(f"Evidences: {data["evidences"][0]["content_type"]}")
+
+    first_evidence_content_type = data["evidences"][0]["content_type"]
+
+
+    try:
+        if (first_evidence_content_type == "application/pdf"):
+            logger.debug("Evidences type PDF")
+            # list for evidence PDFs
+            pdf_list = []
+            logger.debug(f"Start formating list of PDF evidences")
+            for evidence in data["evidences"]:
+                logger.debug(f"Iterated evidence {evidence}")
+                pdf_list.append({
+                    "title": evidence["cid"],
+                    "pdf_preview": evidence["content"]
+                })
+
+            logger.debug(f"End formating list of PDF evidences")
+            logger.debug(f"List of PDF evidences: {pdf_list}")
+            logger.debug(f"Message UUID: {message_uuid}")
+            logger.debug(f"Return URL: {returnurl}")
+
+            return render_template("pdf.html", returnurl=returnurl, message_uuid=message_uuid, pdf_list=pdf_list)
+
+        elif (first_evidence_content_type == "application/xml"):
+            logger.debug("Evidence type XML")
+
+            logger.debug(f"Data for preview: {data}")
+            # List for XMLs
+            xml_list = []
+
+            for evidence in data["evidences"]:
+                xml_list.append({
+                    "title": evidence["cid"],
+                    "xml": evidence["content"]
+                })
+
+            logger.debug(f"Start formating list of XML evidences")
+            logger.debug(f"XML evidences: {xml_list}")
+            return render_template("index.html", xml_list=xml_list, message_uuid=message_uuid, returnurl=returnurl)
+
+        else :
+            return render_template("error.html",
+                               error_message="Unsupported content type",
+                               error_details=f"Unsupported content type: {first_evidence_content_type}"), 400
+
+    except Exception as e:
+        logger.error(f"Error while decoding evidence{e}")
+
+        return render_template("error.html",
+                               error_message="Error while decoding evidence",
+                               error_details=f"Error while decoding evidence"), 400
+
     # List for XMLs
     xml_list = []
 
@@ -148,32 +148,26 @@ def evidense_previewer(message_uuid):
             "xml": evidence["content"]
         })
 
-    print(xml_list)
-
     return render_template("index.html", xml_list=xml_list, message_uuid=message_uuid, returnurl=returnurl)
 
 
 @app.route('/submit', methods=['POST'])
 def submit_approvals():
-    """Обрабатывает отправку состояний чекбоксов"""
+    """Обробляємо отримані статуси чекбоксів"""
     data = request.get_json()
-    print(data)
+    logger.info("Отримано відповідь з апрувами.")
+    logger.debug(data)
     approvals = data.get('approvals', {})
 
-    print("Получены состояния апрувов:")
-    for doc_id, is_approved in approvals.items():
-        print(f"  Документ {doc_id}: {'Затверджено' if is_approved else 'Не затверджено'}")
-
-    # Здесь можно добавить логику сохранения в базу данных или файл
+    logger.debug("Підключення до Redis для оновлення стану апрувів.")
     redis_conn = conn_to_redis(conf.redis_url)
     if redis_conn is None:
+        logger.error("Зʼєднання з Redis провалено")
         return jsonify({"status": "error", "message": "Redis connection failed"}), 500
     json_data = get_data_from_redis(data["message_uuid"], redis_conn)
 
-
-    print("Получены состояния апрувов:")
     for doc_id, is_approved in approvals.items():
-
+        logger.debug(f"Документ {doc_id}: {'Затверджено' if is_approved else 'Не затверджено'}")
         for evidence in json_data["evidences"]:
             if doc_id == evidence["cid"]:
                 evidence["permit"] = is_approved
@@ -192,4 +186,4 @@ def submit_approvals():
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(port=8000, host="0.0.0.0", debug=True)
