@@ -1,10 +1,14 @@
-# If you need more help, visit the Dockerfile reference guide at
-# https://docs.docker.com/go/dockerfile-reference/
+ARG PYTHON_VERSION=3.14
 
 # Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
+FROM ubuntu as timestamp
+RUN TZ=UTC date -u +"%Y-%m-%dT%H:%M:%SZ" > /build_date.txt
 
-ARG PYTHON_VERSION=3.14
+
 FROM python:${PYTHON_VERSION}-slim as base
+
+LABEL org.opencontainers.image.authors="Kirill Shypachov @kshypachov"
+
 
 # Prevents Python from writing pyc files.
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -12,6 +16,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Keeps Python from buffering stdout and stderr to avoid situations where
 # the application crashes without emitting any logs due to buffering.
 ENV PYTHONUNBUFFERED=1
+
+
 
 WORKDIR /app
 
@@ -39,14 +45,18 @@ RUN adduser \
 
 # Copy the source code into the container.
 COPY . .
+RUN chmod +x /app/entrypoint.sh
 
 RUN python3 -m pip install --no-cache-dir -r requirements.txt
 
 # Switch to the non-privileged user to run the application.
 USER appuser
 # Expose the port that the application listens on.
-EXPOSE 5000
+EXPOSE 8000
 ARG FLASK_APP=app.py
+COPY --from=timestamp /build_date.txt /app/build_date.txt
+
 
 # Run the application.
-CMD gunicorn --bind 0.0.0.0:5000 app:app
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD gunicorn app:app --bind ${HOST:-0.0.0.0}:${PORT:-5000} --workers ${WORKERS:-1} --log-level ${LOG_LEVEL:-info}
