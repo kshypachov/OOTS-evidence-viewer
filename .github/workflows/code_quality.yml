@@ -1,0 +1,38 @@
+name: Python Code Quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Укажите нужную версию
+          cache: 'pip' # Автоматическое кэширование зависимостей
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      # Ruff — это невероятно быстрый линтер и форматер (заменяет Flake8, Isort, Black)
+      - name: Lint with Ruff
+        run: ruff check .
+
+      # Проверка типов (опционально, но крайне рекомендуется)
+      - name: Type check with mypy
+        run: mypy . --ignore-missing-imports --pretty --show-error-codes
+
+      # Запуск тестов
+      - name: Run tests with pytest
+        run: |
+          pytest --maxfail=2 --disable-warnings
